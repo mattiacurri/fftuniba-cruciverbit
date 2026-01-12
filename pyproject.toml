@@ -1,0 +1,36 @@
+[project]
+name = "cruciverbit"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "huggingface-hub>=0.35.1",
+    "python-dotenv>=1.0.0",
+    "pandas>=2.0.0",
+    "matplotlib>=3.10.6",
+    "numpy>=2.3.3",
+    "sentence-transformers>=5.1.1",
+    "scikit-learn>=1.5.0",
+    "tqdm>=4.67.1",
+    "transformers>=4.40.0",
+    "torch>=2.0.0",
+    "accelerate>=0.30.0",
+    "datasets>=2.20.0",
+    "unidecode>=1.4.0",
+    "cachetools>=6.2.2",
+]
+
+[tool.ruff]
+src = ["."]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-gpu" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-gpu"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
