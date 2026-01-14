@@ -1,4 +1,5 @@
 """Fine-tune gsarti/it5-efficient-small-el32 with bracketed length tokens on Evalita 2026 Task 1."""
+
 from __future__ import annotations
 
 import argparse
@@ -25,47 +26,84 @@ from transformers import (
 )
 
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 LOGGER = logging.getLogger(__name__)
 # Pattern to recognize special length tokens in the text
-SPECIAL_TOKEN_PATTERN = re.compile(r'\[SL\s*=\s*\d+\]|\[EL\s*=\s*\d+\]')
+SPECIAL_TOKEN_PATTERN = re.compile(r"\[SL\s*=\s*\d+\]|\[EL\s*=\s*\d+\]")
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Fine-tune IT5 Efficient with special length tokens")
-    
+    parser = argparse.ArgumentParser(
+        description="Fine-tune IT5 Efficient with special length tokens"
+    )
+
     # --- MODIFICATION 1: Efficient model by default ---
-    parser.add_argument("--model_name", type=str, default="gsarti/it5-efficient-small-el32")
-    
-    parser.add_argument("--dataset_dir", type=Path, default=Path("evalita2026/task_1/datasets"))
-    parser.add_argument("--output_dir", type=Path, default=Path("tmp_it5_efficient_riddles_nodict_notokens"))
+    parser.add_argument(
+        "--model_name", type=str, default="gsarti/it5-efficient-small-el32"
+    )
+
+    parser.add_argument(
+        "--dataset_dir", type=Path, default=Path("evalita2026/task_1/datasets")
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=Path,
+        default=Path("tmp_it5_efficient_riddles_nodict_notokens"),
+    )
     parser.add_argument("--cache_dir", type=Path, default=Path("cached_tokenized"))
     parser.add_argument("--max_input_length", type=int, default=128)
     parser.add_argument("--max_target_length", type=int, default=32)
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--learning_rate", type=float, default=2e-4)
-    
+
     # --- MODIFICATION 2: Batch Size doubled (the model is lighter) ---
-    parser.add_argument("--train_batch_size", type=int, default=32) 
+    parser.add_argument("--train_batch_size", type=int, default=32)
     parser.add_argument("--eval_batch_size", type=int, default=32)
-    
+
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
     parser.add_argument("--warmup_steps", type=int, default=100)
     parser.add_argument("--logging_steps", type=int, default=100)
     parser.add_argument("--save_limit", type=int, default=2)
     parser.add_argument("--num_beams", type=int, default=4)
-    parser.add_argument("--subset", type=int, default=0, help="Optional number of training examples for quick tests")
+    parser.add_argument(
+        "--subset",
+        type=int,
+        default=0,
+        help="Optional number of training examples for quick tests",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--preprocessing_workers", type=int, default=8)
     parser.add_argument("--fp16", action="store_true", help="Use FP16 mixed precision")
     parser.add_argument("--bf16", action="store_true", help="Use BF16 mixed precision")
-    parser.add_argument("--num_generations", type=int, default=10, help="Number of generations per example for evaluation")
-    parser.add_argument("--generation_log_samples", type=int, default=200, help="Number of examples to log generations for")
-    parser.add_argument("--skip_initial_eval", action="store_true", help="Skip evaluation before training")
-    parser.add_argument("--use_dictionary", type=lambda x: x.lower() == 'true', default=False, help="Use Italian dictionary for data augmentation (true/false)")
-    parser.add_argument("--no_special_tokens", action="store_true", help="Disable special length tokens [SL/EL] for ablation study")
+    parser.add_argument(
+        "--num_generations",
+        type=int,
+        default=10,
+        help="Number of generations per example for evaluation",
+    )
+    parser.add_argument(
+        "--generation_log_samples",
+        type=int,
+        default=200,
+        help="Number of examples to log generations for",
+    )
+    parser.add_argument(
+        "--skip_initial_eval",
+        action="store_true",
+        help="Skip evaluation before training",
+    )
+    parser.add_argument(
+        "--use_dictionary",
+        type=lambda x: x.lower() == "true",
+        default=False,
+        help="Use Italian dictionary for data augmentation (true/false)",
+    )
+    parser.add_argument(
+        "--no_special_tokens",
+        action="store_true",
+        help="Disable special length tokens [SL/EL] for ablation study",
+    )
     return parser.parse_args()
 
 
@@ -77,13 +115,17 @@ def set_seed(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-def load_all_datasets(dataset_dir: Path, use_dictionary: bool = False) -> Tuple[Dataset, Dataset]:
+def load_all_datasets(
+    dataset_dir: Path, use_dictionary: bool = False
+) -> Tuple[Dataset, Dataset]:
     # Load local Evalita dataset
     train_csv = dataset_dir / "train.csv"
     val_csv = dataset_dir / "val.csv"
     if not train_csv.exists() or not val_csv.exists():
         # Fallback if local files don't exist, useful for quick test
-        LOGGER.warning(f"CSV files not found in {dataset_dir}. Creating dummy data if they don't exist.")
+        LOGGER.warning(
+            f"CSV files not found in {dataset_dir}. Creating dummy data if they don't exist."
+        )
         # If you have the files, remove this block or ensure paths are correct
         if not train_csv.exists():
             raise FileNotFoundError(f"Missing train/val CSV files under {dataset_dir}")
@@ -109,40 +151,51 @@ def load_all_datasets(dataset_dir: Path, use_dictionary: bool = False) -> Tuple[
     if not use_dictionary:
         LOGGER.info("Skipping dictionary augmentation (--use_dictionary not set)")
         return evalita_train, evalita_val
-    
+
     LOGGER.info("Loading mik3ml/italian-dictionary...")
     try:
         dict_dataset = load_dataset("mik3ml/italian-dictionary", split="train")
         LOGGER.info("Dictionary dataset columns: %s", dict_dataset.column_names)
-        
+
         rename_map = {}
         if "definition" in dict_dataset.column_names:
             rename_map["definition"] = "clue"
         if "word" in dict_dataset.column_names:
             rename_map["word"] = "answer"
-        
+
         if rename_map:
             dict_dataset = dict_dataset.rename_columns(rename_map)
-        
-        if "clue" in dict_dataset.column_names and "answer" in dict_dataset.column_names:
+
+        if (
+            "clue" in dict_dataset.column_names
+            and "answer" in dict_dataset.column_names
+        ):
             dict_dataset = dict_dataset.select_columns(["clue", "answer"])
-            
+
             def add_length(batch):
-                return {"answer_length": [len(str(a)) if a else 0 for a in batch["answer"]]}
-            
+                return {
+                    "answer_length": [len(str(a)) if a else 0 for a in batch["answer"]]
+                }
+
             dict_dataset = dict_dataset.map(
-                add_length, 
-                batched=True, 
+                add_length,
+                batched=True,
                 batch_size=1000,
-                desc="Processing dictionary dataset"
+                desc="Processing dictionary dataset",
             )
-            
-            LOGGER.info("Merging Evalita train (%d) with Dictionary train (%d)", len(evalita_train), len(dict_dataset))
+
+            LOGGER.info(
+                "Merging Evalita train (%d) with Dictionary train (%d)",
+                len(evalita_train),
+                len(dict_dataset),
+            )
             combined_train = concatenate_datasets([evalita_train, dict_dataset])
         else:
             combined_train = evalita_train
     except Exception as e:
-        LOGGER.warning(f"Unable to load additional dictionary: {e}. Proceeding only with Evalita.")
+        LOGGER.warning(
+            f"Unable to load additional dictionary: {e}. Proceeding only with Evalita."
+        )
         combined_train = evalita_train
 
     return combined_train, evalita_val
@@ -183,7 +236,9 @@ def ensure_special_tokens(tokenizer, model, special_tokens: List[AddedToken]) ->
         model.resize_token_embeddings(len(tokenizer))
 
 
-def _format_target(answer: str, length: int, use_special_tokens: bool = True) -> str | None:
+def _format_target(
+    answer: str, length: int, use_special_tokens: bool = True
+) -> str | None:
     answer = str(answer).strip()
     if not answer:
         return None
@@ -212,7 +267,7 @@ def preprocess_batch(
         target = _format_target(answer, length, use_special_tokens)
         if not clue or target is None:
             continue
-        
+
         real_length = int(length) if length else len(str(answer).strip())
         # Prompt optimized for Italian model
         if use_special_tokens:
@@ -240,7 +295,9 @@ def preprocess_batch(
     labels = tokenized_targets["input_ids"]
     pad_id = tokenizer.pad_token_id
     # Replace padding with -100 to ignore it in loss calculation
-    labels = [[-100 if token == pad_id else token for token in label] for label in labels]
+    labels = [
+        [-100 if token == pad_id else token for token in label] for label in labels
+    ]
     tokenized_inputs["labels"] = labels
     return tokenized_inputs
 
@@ -290,7 +347,7 @@ def evaluate_with_generations(
     counts = {"acc1": 0, "acc5": 0, "acc10": 0}
     reciprocal_rank_sum = 0.0
     logged_samples: list[dict] = []
-    
+
     # Ensure the model is in eval mode
     was_training = model.training
     model.eval()
@@ -299,7 +356,7 @@ def evaluate_with_generations(
         for start in range(0, total, batch_size):
             if (start % (batch_size * 50)) == 0:
                 LOGGER.info(f"Generation progress: {start}/{total} examples")
-            batch = examples[start:start + batch_size]
+            batch = examples[start : start + batch_size]
             prompts = []
             answers = []
             lengths = []
@@ -332,17 +389,21 @@ def evaluate_with_generations(
             )
 
             outputs = outputs.cpu()
-            for idx, (prompt, gold_answer, length) in enumerate(zip(prompts, answers, lengths)):
+            for idx, (prompt, gold_answer, length) in enumerate(
+                zip(prompts, answers, lengths)
+            ):
                 gold_clean = _clean_answer(gold_answer)
                 candidate_cleans = []
                 raw_candidates = []
-                
+
                 # Decode the beams
                 for rank in range(num_generations):
                     seq_index = idx * num_generations + rank
                     if seq_index >= outputs.size(0):
                         break
-                    decoded = tokenizer.decode(outputs[seq_index], skip_special_tokens=False)
+                    decoded = tokenizer.decode(
+                        outputs[seq_index], skip_special_tokens=False
+                    )
                     raw_candidates.append(decoded)
                     candidate_cleans.append(_clean_answer(decoded))
 
@@ -352,9 +413,15 @@ def evaluate_with_generations(
                 # Calculate metrics for single example
                 if any(gold_clean in cand for cand in candidate_cleans[:1]):
                     counts["acc1"] += 1
-                if any(gold_clean in cand for cand in candidate_cleans[:min(5, len(candidate_cleans))]):
+                if any(
+                    gold_clean in cand
+                    for cand in candidate_cleans[: min(5, len(candidate_cleans))]
+                ):
                     counts["acc5"] += 1
-                if any(gold_clean in cand for cand in candidate_cleans[:min(10, len(candidate_cleans))]):
+                if any(
+                    gold_clean in cand
+                    for cand in candidate_cleans[: min(10, len(candidate_cleans))]
+                ):
                     counts["acc10"] += 1
 
                 match_rank = None
@@ -365,13 +432,15 @@ def evaluate_with_generations(
                         break
 
                 if len(logged_samples) < max_logged_examples:
-                    logged_samples.append({
-                        "clue": prompt,
-                        "answer": gold_answer,
-                        "length": length,
-                        "match_rank": match_rank,
-                        "candidates": raw_candidates,
-                    })
+                    logged_samples.append(
+                        {
+                            "clue": prompt,
+                            "answer": gold_answer,
+                            "length": length,
+                            "match_rank": match_rank,
+                            "candidates": raw_candidates,
+                        }
+                    )
 
     if was_training:
         model.train()
@@ -398,7 +467,9 @@ class GenerationAwareSeq2SeqTrainer(Seq2SeqTrainer):
         super().__init__(*args, **kwargs)
         self.generation_eval_config = generation_eval_config or {}
 
-    def evaluate(self, eval_dataset=None, ignore_keys=None, metric_key_prefix: str = "eval"):
+    def evaluate(
+        self, eval_dataset=None, ignore_keys=None, metric_key_prefix: str = "eval"
+    ):
         # Standard loss evaluation
         metrics = super().evaluate(
             eval_dataset=eval_dataset,
@@ -434,11 +505,17 @@ class GenerationAwareSeq2SeqTrainer(Seq2SeqTrainer):
             )
 
             if gen_metrics:
-                metrics.update({
-                    f"{metric_key_prefix}_accuracy_at_1": gen_metrics["accuracy_at_1"],
-                    f"{metric_key_prefix}_accuracy_at_5": gen_metrics["accuracy_at_5"],
-                    f"{metric_key_prefix}_mrr": gen_metrics["mean_reciprocal_rank"],
-                })
+                metrics.update(
+                    {
+                        f"{metric_key_prefix}_accuracy_at_1": gen_metrics[
+                            "accuracy_at_1"
+                        ],
+                        f"{metric_key_prefix}_accuracy_at_5": gen_metrics[
+                            "accuracy_at_5"
+                        ],
+                        f"{metric_key_prefix}_mrr": gen_metrics["mean_reciprocal_rank"],
+                    }
+                )
 
         return metrics
 
@@ -457,13 +534,21 @@ def main() -> None:
         args.bf16 = False
 
     LOGGER.info("Loading datasets...")
-    train_dataset, val_dataset = load_all_datasets(args.dataset_dir, use_dictionary=args.use_dictionary)
+    train_dataset, val_dataset = load_all_datasets(
+        args.dataset_dir, use_dictionary=args.use_dictionary
+    )
 
     # Subset management for debug
     if args.subset and args.subset > 0:
         LOGGER.warning("Training on subset=%d", args.subset)
-        train_dataset = train_dataset.select(range(min(args.subset, len(train_dataset))))
-        val_cap = max(1, args.subset // 10) if args.subset >= 10 else min(len(val_dataset), 100)
+        train_dataset = train_dataset.select(
+            range(min(args.subset, len(train_dataset)))
+        )
+        val_cap = (
+            max(1, args.subset // 10)
+            if args.subset >= 10
+            else min(len(val_dataset), 100)
+        )
         val_dataset = val_dataset.select(range(min(val_cap, len(val_dataset))))
 
     # Save the raw list for generation
@@ -476,18 +561,23 @@ def main() -> None:
     # Note: IT5 Efficient uses standard T5/IT5 tokenization
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
     model = AutoModelForSeq2SeqLM.from_pretrained(args.model_name)
-    
+
     # Add special tokens [SL=x] and [EL=x]
     if not args.no_special_tokens:
         ensure_special_tokens(tokenizer, model, build_length_tokens(lengths))
     else:
-        LOGGER.info("Skipping special tokens (--no_special_tokens enabled for ablation study)")
+        LOGGER.info(
+            "Skipping special tokens (--no_special_tokens enabled for ablation study)"
+        )
 
     # Intelligent caching based on model name
     safe_model_name = args.model_name.replace("/", "_")
     tokens_suffix = "no_tokens" if args.no_special_tokens else "tokens"
     dict_suffix = "dict" if args.use_dictionary else "nodict"
-    cache_base = args.cache_dir / f"{safe_model_name}_{dict_suffix}_{tokens_suffix}_in{args.max_input_length}_out{args.max_target_length}_sub{args.subset}"
+    cache_base = (
+        args.cache_dir
+        / f"{safe_model_name}_{dict_suffix}_{tokens_suffix}_in{args.max_input_length}_out{args.max_target_length}_sub{args.subset}"
+    )
     train_cache = cache_base / "train"
     val_cache = cache_base / "val"
 
@@ -571,7 +661,7 @@ def main() -> None:
         tokenizer=tokenizer,
         generation_eval_config=generation_eval_config,
     )
-    
+
     if not args.skip_initial_eval:
         LOGGER.info("Initial evaluation on validation split...")
         try:
@@ -587,7 +677,9 @@ def main() -> None:
     resume_checkpoint = None
     if checkpoints:
         resume_checkpoint = str(checkpoints[-1])
-        LOGGER.info(f"Found {len(checkpoints)} checkpoint(s). Resuming from: {checkpoints[-1].name}")
+        LOGGER.info(
+            f"Found {len(checkpoints)} checkpoint(s). Resuming from: {checkpoints[-1].name}"
+        )
     else:
         LOGGER.info("No checkpoints found. Starting training from scratch.")
 

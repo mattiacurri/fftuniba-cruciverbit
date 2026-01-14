@@ -15,17 +15,21 @@ ITALIAN_DICT_PATH = "scripts\\task_2\\italian_words_v2.txt"
 _out = None
 _grid_out = None
 
+
 def tprint(*args, **kwargs):
     if PRINT_TO_SCREEN:
         print(*args, **kwargs)
     print(*args, **kwargs, file=_out)
 
+
 def write_grid_repr(grid):
     print(str(grid), file=_grid_out)
+
 
 def read_grids_empty(path):
     with open(path, encoding="utf-8") as f:
         return [ast.literal_eval(line.strip()) for line in f if line.strip()]
+
 
 def read_clues_jsonl(path):
     data = []
@@ -35,6 +39,7 @@ def read_clues_jsonl(path):
             if line:
                 data.append(json.loads(line))
     return data
+
 
 def read_candidates_csv(path):
     by_xw = defaultdict(list)
@@ -55,7 +60,7 @@ def read_candidates_csv(path):
             if len(conf_f) < len(cand_list):
                 conf_f += [float("-inf")] * (len(cand_list) - len(conf_f))
             elif len(conf_f) > len(cand_list):
-                conf_f = conf_f[:len(cand_list)]
+                conf_f = conf_f[: len(cand_list)]
             cand_conf = list(zip(cand_list, conf_f))
             by_xw[cid].append((idx, cand_conf))
 
@@ -65,16 +70,18 @@ def read_candidates_csv(path):
         out[cid] = [cand for (_i, cand) in items_sorted]
     return out
 
+
 def _strip_accents(s: str) -> str:
     nkfd = unicodedata.normalize("NFD", s)
     return "".join(ch for ch in nkfd if not unicodedata.combining(ch))
+
 
 def load_italian_dictionary(path=ITALIAN_DICT_PATH):
     pickle_path = path + ".pickle"
     if os.path.exists(pickle_path):
         with open(pickle_path, "rb") as f:
             return pickle.load(f)
-    
+
     by_len = defaultdict(list)
     try:
         with open(path, encoding="utf-8") as f:
@@ -92,15 +99,17 @@ def load_italian_dictionary(path=ITALIAN_DICT_PATH):
     except FileNotFoundError:
         tprint(f"Dictionary file '{path}' not found.")
         return by_len
-    
+
     with open(pickle_path, "wb") as f:
         pickle.dump(by_len, f)
     return by_len
+
 
 def print_grid(grid):
     for row in grid:
         tprint("".join(row))
     tprint("-" * 20)
+
 
 def apply_assignment_to_grid(base_grid, assignment, clues):
     grid = [row[:] for row in base_grid]
@@ -116,6 +125,7 @@ def apply_assignment_to_grid(base_grid, assignment, clues):
                 r += 1
     return grid
 
+
 def clue_cells(cl):
     r, c = cl["row"], cl["col"]
     d, L = cl["direction"], cl["length"]
@@ -128,6 +138,7 @@ def clue_cells(cl):
             r += 1
     return out
 
+
 def build_intersections(clues):
     cells_by_var = [clue_cells(cl) for cl in clues]
     cell_to_vars = defaultdict(list)
@@ -139,17 +150,19 @@ def build_intersections(clues):
     for rc, lst in cell_to_vars.items():
         if len(lst) > 1:
             for a in range(len(lst)):
-                for b in range(a+1, len(lst)):
+                for b in range(a + 1, len(lst)):
                     i, pi = lst[a]
                     j, pj = lst[b]
-                    inter[(i,j)].append((pi,pj))
-                    inter[(j,i)].append((pj,pi))
+                    inter[(i, j)].append((pi, pj))
+                    inter[(j, i)].append((pj, pi))
                     neigh[i].add(j)
                     neigh[j].add(i)
     return inter, neigh
 
+
 def can_place_word_on_grid(grid, word, r, c, d):
-    R = len(grid); C = len(grid[0])
+    R = len(grid)
+    C = len(grid[0])
     for ch in word:
         if not (0 <= r < R and 0 <= c < C):
             return False
@@ -166,24 +179,35 @@ def can_place_word_on_grid(grid, word, r, c, d):
             r += 1
     return True
 
+
 def compatible(w1, w2, crosses):
-    for (p1, p2) in crosses:
+    for p1, p2 in crosses:
         if w1[p1] != w2[p2]:
             return False
     return True
 
-class BacktrackSolver:
-    def __init__(self, base_grid, clues, domains, intersections, neighbors,
-                 max_nodes_per_start, max_nodes_per_crossword,
-                 print_partials,
-                 italian_dict=None,
-                 max_candidates_csv=100,
-                 max_candidates_dict=3):
 
+class BacktrackSolver:
+    def __init__(
+        self,
+        base_grid,
+        clues,
+        domains,
+        intersections,
+        neighbors,
+        max_nodes_per_start,
+        max_nodes_per_crossword,
+        print_partials,
+        italian_dict=None,
+        max_candidates_csv=100,
+        max_candidates_dict=3,
+    ):
         self.base_grid = base_grid
         self.clues = clues
-        
-        self.domains = {v: [(w.upper(), conf) for (w, conf) in ws] for v, ws in domains.items()}
+
+        self.domains = {
+            v: [(w.upper(), conf) for (w, conf) in ws] for v, ws in domains.items()
+        }
         self.intersections = intersections
         self.neighbors = neighbors
 
@@ -213,7 +237,8 @@ class BacktrackSolver:
         self.local_best_letters = 0
         self.local_best_csv_words = 0
 
-        R = len(base_grid); C = len(base_grid[0])
+        R = len(base_grid)
+        C = len(base_grid[0])
         total = 0
         for r in range(R):
             for c in range(C):
@@ -227,7 +252,12 @@ class BacktrackSolver:
 
     def update_best_from_grid(self, assignment, grid, csv_vars=None):
         fw = len(assignment)
-        fl = sum(1 for r in range(len(grid)) for c in range(len(grid[0])) if grid[r][c].isalpha())
+        fl = sum(
+            1
+            for r in range(len(grid))
+            for c in range(len(grid[0]))
+            if grid[r][c].isalpha()
+        )
         csv_count = len(csv_vars) if csv_vars is not None else 0
 
         improve = False
@@ -245,13 +275,20 @@ class BacktrackSolver:
             self.best_filled_words = fw
             self.best_filled_letters = fl
             self.best_csv_words = csv_count
-            tprint(f"Best global partial: csv_words={csv_count}, {fw}/{self.total_words} words, {fl}/{self.total_letters} letters (crossword_nodes: {self.nodes_crossword})")
+            tprint(
+                f"Best global partial: csv_words={csv_count}, {fw}/{self.total_words} words, {fl}/{self.total_letters} letters (crossword_nodes: {self.nodes_crossword})"
+            )
             if self.print_partials:
                 print_grid(grid)
 
     def update_local_from_grid(self, assignment, grid, csv_vars=None):
         fw = len(assignment)
-        fl = sum(1 for r in range(len(grid)) for c in range(len(grid[0])) if grid[r][c].isalpha())
+        fl = sum(
+            1
+            for r in range(len(grid))
+            for c in range(len(grid[0]))
+            if grid[r][c].isalpha()
+        )
         csv_count = len(csv_vars) if csv_vars is not None else 0
 
         improve = False
@@ -284,12 +321,17 @@ class BacktrackSolver:
             ok = True
             for a_var, a_word in assignment.items():
                 key = (v, a_var)
-                if key in self.intersections and not compatible(w, a_word, self.intersections[key]):
+                if key in self.intersections and not compatible(
+                    w, a_word, self.intersections[key]
+                ):
                     ok = False
                     break
             if ok and can_place_word_on_grid(grid, w, r, c, d):
                 out.append((w, conf))
-            if self.max_candidates_csv is not None and len(out) >= self.max_candidates_csv:
+            if (
+                self.max_candidates_csv is not None
+                and len(out) >= self.max_candidates_csv
+            ):
                 break
         out.sort(key=lambda x: x[1], reverse=True)
         return out
@@ -303,7 +345,7 @@ class BacktrackSolver:
         for neigh in self.neighbors.get(v, []):
             if neigh in assignment:
                 relevant_neighbors.append((neigh, assignment[neigh]))
-        
+
         relevant_neighbors.sort()
         return (v, pattern, tuple(relevant_neighbors))
 
@@ -314,9 +356,9 @@ class BacktrackSolver:
         L = cl["length"]
 
         pattern = self._pattern_for_slot(v, grid)
-        
+
         cache_key = self._make_cache_key(v, pattern, assignment)
-        
+
         if cache_key in self.dict_cache:
             candidate_list = self.dict_cache[cache_key]
         else:
@@ -330,31 +372,33 @@ class BacktrackSolver:
                         break
                 if not ok:
                     continue
-                
+
                 ok2 = True
                 for a_var, a_word in assignment.items():
                     key = (v, a_var)
-                    if key in self.intersections and not compatible(w, a_word, self.intersections[key]):
+                    if key in self.intersections and not compatible(
+                        w, a_word, self.intersections[key]
+                    ):
                         ok2 = False
                         break
                 if not ok2:
                     continue
-                
+
                 cand_acc.append(w)
                 if len(cand_acc) > 5000:
                     break
-            
+
             self.dict_cache[cache_key] = cand_acc
             candidate_list = cand_acc
 
         out = []
         limit = self.max_candidates_dict
-        
+
         for w in candidate_list:
             out.append(w)
             if limit and len(out) >= limit:
                 break
-        
+
         return out
 
     def _place_word_mutating(self, grid, v, w):
@@ -383,13 +427,12 @@ class BacktrackSolver:
             else:
                 rr += 1
         if not ok:
-            for (r0, c0, old) in modified:
+            for r0, c0, old in modified:
                 grid[r0][c0] = old
             return None
         return modified
 
     def dfs(self, assignment, grid, csv_vars):
-        
         if self.stop_due_to_crossword_limit:
             return False
 
@@ -397,12 +440,18 @@ class BacktrackSolver:
         self.nodes_start += 1
         self.nodes_crossword += 1
 
-        if self.max_nodes_per_crossword is not None and self.nodes_crossword > self.max_nodes_per_crossword:
+        if (
+            self.max_nodes_per_crossword is not None
+            and self.nodes_crossword > self.max_nodes_per_crossword
+        ):
             self.stop_due_to_crossword_limit = True
             tprint(f"Crossword nodes limit reached: ({self.nodes_crossword}).")
             return False
 
-        if self.max_nodes_per_start is not None and self.nodes_start > self.max_nodes_per_start:
+        if (
+            self.max_nodes_per_start is not None
+            and self.nodes_start > self.max_nodes_per_start
+        ):
             return False
 
         self.update_local_from_grid(assignment, grid, csv_vars)
@@ -430,14 +479,20 @@ class BacktrackSolver:
 
         global_candidates.sort(key=lambda x: x[0])
 
-        for (_prio, v, w, source) in global_candidates:
+        for _prio, v, w, source in global_candidates:
             if self.stop_due_to_crossword_limit:
                 return False
 
-            if self.max_nodes_per_start is not None and self.nodes_start >= self.max_nodes_per_start:
+            if (
+                self.max_nodes_per_start is not None
+                and self.nodes_start >= self.max_nodes_per_start
+            ):
                 return False
 
-            if self.max_nodes_per_crossword is not None and self.nodes_crossword >= self.max_nodes_per_crossword:
+            if (
+                self.max_nodes_per_crossword is not None
+                and self.nodes_crossword >= self.max_nodes_per_crossword
+            ):
                 self.stop_due_to_crossword_limit = True
                 tprint(f"Crossword nodes limit reached: ({self.nodes_crossword}).")
                 return False
@@ -459,7 +514,7 @@ class BacktrackSolver:
                 csv_vars.remove(v)
             if v in assignment:
                 del assignment[v]
-            for (r0, c0, old) in reversed(modified):
+            for r0, c0, old in reversed(modified):
                 grid[r0][c0] = old
 
             if self.stop_due_to_crossword_limit:
@@ -480,7 +535,6 @@ class BacktrackSolver:
         return starts
 
     def solve(self):
-        
         starts = self.enumerate_starts()
 
         def start_key(item):
@@ -489,6 +543,7 @@ class BacktrackSolver:
                 return (0, -conf if conf is not None else 0)
             else:
                 return (1, 0)
+
         starts.sort(key=start_key)
 
         seen = set()
@@ -498,8 +553,13 @@ class BacktrackSolver:
                 continue
             seen.add(key)
 
-            if self.max_nodes_per_crossword is not None and self.nodes_crossword >= self.max_nodes_per_crossword:
-                tprint(f"Crossword nodes limit ({self.max_nodes_per_crossword}) reached. Stopping all starts.")
+            if (
+                self.max_nodes_per_crossword is not None
+                and self.nodes_crossword >= self.max_nodes_per_crossword
+            ):
+                tprint(
+                    f"Crossword nodes limit ({self.max_nodes_per_crossword}) reached. Stopping all starts."
+                )
                 break
             if self.stop_due_to_crossword_limit:
                 break
@@ -532,7 +592,7 @@ class BacktrackSolver:
 
             if v_start in assignment:
                 del assignment[v_start]
-            for (r0, c0, old) in reversed(modified):
+            for r0, c0, old in reversed(modified):
                 base_grid_copy[r0][c0] = old
 
             if self.stop_due_to_crossword_limit:
@@ -544,7 +604,6 @@ class BacktrackSolver:
 
 # change limits based on grid size
 # to not search too much in small grids or too little in large grids
-
 def get_dynamic_candidate_limits(n_rows, n_cols):
     n = n_rows
 
@@ -552,27 +611,26 @@ def get_dynamic_candidate_limits(n_rows, n_cols):
         return {
             "max_nodes_per_start": 100,
             "max_candidates_csv": 100,
-            "max_candidates_dict": 3
+            "max_candidates_dict": 3,
         }
     elif n <= 8:
         return {
             "max_nodes_per_start": 500,
             "max_candidates_csv": 500,
-            "max_candidates_dict": 5
+            "max_candidates_dict": 5,
         }
     elif n <= 10:
         return {
             "max_nodes_per_start": 1000,
             "max_candidates_csv": 600,
-            "max_candidates_dict": 10
+            "max_candidates_dict": 10,
         }
     else:
         return {
             "max_nodes_per_start": 2000,
             "max_candidates_csv": 600,
-            "max_candidates_dict": 10
+            "max_candidates_dict": 10,
         }
-
 
 
 def run_all():
@@ -580,21 +638,45 @@ def run_all():
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--grids_empty", type=str, default="scripts\\task_2\\test_grids_empty.txt",
-                        help="Path to the file containing empty grids.")
-    parser.add_argument("--clues_jsonl", type=str, default="scripts\\task_2\\test_cross_clues.jsonl",
-                        help="Path to the JSONL file containing clues.")
-    parser.add_argument("--candidates", type=str, required=True,
-                        help="Path to the CSV file containing candidates.")
-    parser.add_argument("--output_file", type=str, required=True,
-                        help="Path to the output debug file.")
-    parser.add_argument("--output_grid_file", type=str, required=True,
-                        help="Path to the output grid file.")
-    parser.add_argument("-n", type=int, default=50,
-                        help="Number of crosswords to process (default: 50).")
-    parser.add_argument("--no_dict", action="store_true",
-                        help="Disable the use of the Italian dictionary.")
-    
+    parser.add_argument(
+        "--grids_empty",
+        type=str,
+        default="scripts\\task_2\\test_grids_empty.txt",
+        help="Path to the file containing empty grids.",
+    )
+    parser.add_argument(
+        "--clues_jsonl",
+        type=str,
+        default="scripts\\task_2\\test_cross_clues.jsonl",
+        help="Path to the JSONL file containing clues.",
+    )
+    parser.add_argument(
+        "--candidates",
+        type=str,
+        required=True,
+        help="Path to the CSV file containing candidates.",
+    )
+    parser.add_argument(
+        "--output_file", type=str, required=True, help="Path to the output debug file."
+    )
+    parser.add_argument(
+        "--output_grid_file",
+        type=str,
+        required=True,
+        help="Path to the output grid file.",
+    )
+    parser.add_argument(
+        "-n",
+        type=int,
+        default=50,
+        help="Number of crosswords to process (default: 50).",
+    )
+    parser.add_argument(
+        "--no_dict",
+        action="store_true",
+        help="Disable the use of the Italian dictionary.",
+    )
+
     args = parser.parse_args()
 
     OUTPUT_FILE = args.output_file
@@ -606,7 +688,6 @@ def run_all():
 
     _out = open(OUTPUT_FILE, "w", encoding="utf-8")
     _grid_out = open(OUTPUT_GRID_FILE, "w", encoding="utf-8")
-
 
     empty = read_grids_empty(args.grids_empty)
     clues_all = read_clues_jsonl(args.clues_jsonl)
@@ -624,10 +705,11 @@ def run_all():
     total_start = time.time()
 
     import tqdm
+
     for i in tqdm.tqdm(range(Np)):
-        tprint("\n" + "="*40)
-        tprint(f"CRUCIVERBA {i+1}")
-        tprint("="*40 + "\n")
+        tprint("\n" + "=" * 40)
+        tprint(f"CRUCIVERBA {i + 1}")
+        tprint("=" * 40 + "\n")
 
         base = [row[:] for row in empty[i]]
         clues = clues_all[i]
@@ -642,7 +724,7 @@ def run_all():
         for v in range(len(clues)):
             L = clues[v]["length"]
             cand = [(w, conf) for (w, conf) in cand_lists[v] if len(w) == L]
-            cand = cand[:limits["max_candidates_csv"]]
+            cand = cand[: limits["max_candidates_csv"]]
             cand.sort(key=lambda x: x[1], reverse=True)
             domains[v] = cand
 
@@ -652,22 +734,29 @@ def run_all():
         max_nodes_crossword = max_nodes_start * len(clues)
 
         solver = BacktrackSolver(
-            base, clues, domains, inter, neigh,
-            max_nodes_start, max_nodes_crossword,
+            base,
+            clues,
+            domains,
+            inter,
+            neigh,
+            max_nodes_start,
+            max_nodes_crossword,
             PRINT_PARTIALS,
             italian_dict=italian_dict,
             max_candidates_csv=limits["max_candidates_csv"],
-            max_candidates_dict=limits["max_candidates_dict"]
+            max_candidates_dict=limits["max_candidates_dict"],
         )
 
         start_time = time.time()
         best = solver.solve()
         final = apply_assignment_to_grid(base, best, clues)
         end_time = time.time()
-        
+
         write_grid_repr(final)
 
-        tprint(f"Execution time for this crossword: {end_time - start_time:.2f} seconds")
+        tprint(
+            f"Execution time for this crossword: {end_time - start_time:.2f} seconds"
+        )
 
         tprint("\nFinal grid:")
         print_grid(final)
@@ -677,6 +766,7 @@ def run_all():
 
     _out.close()
     _grid_out.close()
+
 
 if __name__ == "__main__":
     run_all()
