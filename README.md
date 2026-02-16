@@ -79,6 +79,18 @@ uv run scripts\task_2\task2_algorithm.py --candidates <OUTPUTDIR_TASK2> --output
 
 Then you can use the provided evaluation script from the shared task to evaluate your crossword solutions.
 
+
+## Citation
+
+If you find our work useful to your research and applications, please consider citing the paper and staring the repo ☺️.
+
+**BibTeX:**
+
+```bibtex
+TBD
+```
+
+
 ---
 
 <div align="center">
