@@ -4,6 +4,23 @@
 
 This repository contains the code for the FFT-UniBa submission to the Cruciverb-IT shared task at EVALITA 2026.
 
+## Project Organization
+
+```
+scripts/
+  └─ labeled_dataset/
+    ├─ __init__.py
+    ├─ gemini_client.py                    <- Generator of the dataset
+    ├─ models.py                           <- Data models and JSON schema for Gemini classification
+    └─ test_classified_temp0.csv           <- Sample classified dataset for testing the Gemini client
+
+  └─ task_2/
+    ├─ italian_words_v2.txt                <- List of Italian words used for candidate filtering
+    ├─ italian_words_v2.txt.pickle         <- Preprocessed version of the word list for faster loading
+    └─ task2_algorithm.py                  <- Script for task 2
+```
+
+
 ## Preliminaries
 
 Before running the code, ensure you have the required packages installed. You can do this by using `uv`:
